@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor CF · Pruebas de interacción</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  #portada, #app { display: none !important; }
+  #diag { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  #diag h1 { font-size: 20px; margin-bottom: 4px; }
+  .intro { color: var(--tinta-2); margin: 0 0 22px; }
+  .marcador { font-size: 16px; font-weight: 600; padding: 12px 16px; border-radius: var(--r); margin-bottom: 18px; }
+  .todo-ok { background: color-mix(in oklab, var(--est-meta) 14%, var(--superficie)); }
+  .hay-fallos { background: color-mix(in oklab, var(--est-grave) 14%, var(--superficie)); }
+  #detalle { font: 13px/1.8 ui-monospace, "Cascadia Mono", monospace; white-space: pre-wrap; }
+  .ok { color: var(--exito-texto); }
+  .mal { color: var(--est-grave); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="portada" hidden></div>
+<div id="app"><header id="cabecera"></header><main id="contenido"></main></div>
+<div id="diag">ejecutando…</div>
+
+<script src="app.js"></script>
+<script>
+/* Pruebas de interacción de la vista de detalle.
+   Nacieron de un fallo real: <body> llevaba `data-vista`, y el manejador
+   global de clics lo encontraba con closest(), de modo que cualquier clic
+   suelto —incluido el de los campos de texto— borraba el KPI seleccionado
+   y rebotaba al resumen. Se abren con doble clic; sin red ni credenciales. */
+
+const salida = [];
+const comprobar = (titulo, obtenido, esperado) => {
+  const bien = obtenido === esperado;
+  salida.push({ bien, texto: `${titulo}: ${obtenido}` + (bien ? '' : `   ← se esperaba ${esperado}`) });
+};
+const nota = t => salida.push({ bien: true, info: true, texto: t });
+
+app.sheetId = 'PRUEBAS';
+app.datos = {
+  config: { ...SEMILLA.config, mesCorte: '2026-08' },
+  kpis: SEMILLA.kpis.map(k => ({ ...k })),
+  historial: SEMILLA.kpis.map(k => ({ kpiId: k.id, fecha: '2026-08-01', valor: k.avance })),
+  hitos: SEMILLA.hitos.map(h => ({ ...h })),
+  bitacora: SEMILLA.bitacora.map(b => ({ ...b }))
+};
+
+app.vista = 'detalle';
+app.kpiSel = 'KPI-01';
+pintar();
+comprobar('al abrir el detalle, la vista', app.vista, 'detalle');
+
+// Un clic en un campo de texto no debe cambiar de vista.
+const campoHito = document.querySelector('form[data-alta="hito"] input');
+nota(`campo «Añadir un hito» presente: ${!!campoHito}`);
+if (campoHito) {
+  campoHito.click();
+  comprobar('tras hacer clic en el campo de hito, la vista', app.vista, 'detalle');
+  comprobar('tras hacer clic en el campo de hito, el KPI', app.kpiSel, 'KPI-01');
+}
+
+// Añadir un hito mantiene el detalle abierto y guarda el hito.
+const formHito = document.querySelector('form[data-alta="hito"]');
+if (formHito && app.vista === 'detalle') {
+  formHito.querySelector('input').value = 'Hito de prueba';
+  formHito.requestSubmit();
+  comprobar('tras añadir un hito, la vista', app.vista, 'detalle');
+  comprobar('el hito quedó registrado', String(app.datos.hitos.some(h => h.nombre === 'Hito de prueba')), 'true');
+}
+
+// Lo mismo con la bitácora.
+const areaNota = document.querySelector('form[data-alta="nota"] textarea');
+nota(`campo de bitácora presente: ${!!areaNota}`);
+if (areaNota) {
+  areaNota.click();
+  comprobar('tras hacer clic en la bitácora, la vista', app.vista, 'detalle');
+  document.querySelector('form[data-alta="nota"] textarea').value = 'Nota de prueba';
+  document.querySelector('form[data-alta="nota"]').requestSubmit();
+  comprobar('tras registrar una nota, la vista', app.vista, 'detalle');
+  comprobar('la nota quedó registrada', String(app.datos.bitacora.some(b => b.texto === 'Nota de prueba')), 'true');
+}
+
+// Marcar un hito tampoco debe sacarnos del detalle.
+const casilla = document.querySelector('[data-hito]');
+if (casilla && app.vista === 'detalle') {
+  casilla.checked = true;
+  casilla.dispatchEvent(new Event('change', { bubbles: true }));
+  comprobar('tras marcar una casilla de hito, la vista', app.vista, 'detalle');
+}
+
+// Los botones de navegación sí deben funcionar.
+const volver = document.querySelector('[data-vista="resumen"]');
+if (volver) {
+  volver.click();
+  comprobar('el botón «Volver al resumen» sí navega', app.vista, 'resumen');
+}
+
+const fallos = salida.filter(s => !s.bien).length;
+const pruebas = salida.filter(s => !s.info).length;
+document.getElementById('diag').innerHTML = `
+  <h1>Pruebas de interacción</h1>
+  <p class="intro">Comprueba que escribir en los campos de la vista de detalle no expulsa al resumen,
+     y que la navegación sí responde.</p>
+  <div class="marcador ${fallos ? 'hay-fallos' : 'todo-ok'}">
+    ${fallos ? `${fallos} de ${pruebas} comprobaciones fallaron` : `Las ${pruebas} comprobaciones pasan`}
+  </div>
+  <div id="detalle">${salida.map(s =>
+    s.info ? `<span>·     ${s.texto}</span>`
+           : `<span class="${s.bien ? 'ok' : 'mal'}">${s.bien ? '✓' : '✗'}</span>  ${s.texto}`
+  ).join('\n')}</div>`;
+</script>
+</body>
+</html>

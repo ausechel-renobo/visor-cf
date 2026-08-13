@@ -344,8 +344,8 @@ select.celda-edit { text-align: left; min-width: 150px; }
 .tabla-comite { min-width: 0; font-size: 15px; }
 .tabla-comite td { padding: 11px 12px; }
 .col-bar { width: 176px; }
-body[data-vista="comite"] { background: var(--superficie); }
-body[data-vista="comite"] #contenido { padding-top: 32px; }
+body[data-pantalla="comite"] { background: var(--superficie); }
+body[data-pantalla="comite"] #contenido { padding-top: 32px; }
 
 /* --- Impresión: el comité en una página ----------------------------------- */
 @media print {

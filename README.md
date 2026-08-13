@@ -157,6 +157,10 @@ Ambas se abren con doble clic y funcionan sin conexión ni credenciales.
   coinciden con las columnas `G` y `H` de `Dashboard.xlsx`, incluido el promedio de
   `G21` (12,842643 %). Son 31 comprobaciones. Conviene volver a abrirla cada vez que
   se toque `calculos` o la semilla.
+- **`pruebas-interaccion.html`** — simula los clics de la vista de detalle y comprueba
+  que escribir en los campos no expulsa al resumen, y que la navegación sí responde.
+  Nació de un fallo real: `<body>` llevaba `data-vista` y el manejador global de clics
+  lo encontraba con `closest()`, así que cualquier clic suelto cambiaba de vista.
 - **`vista-previa.html`** — el visor con datos de ejemplo y una serie sintética, para
   revisar el diseño sin montar OAuth. Acepta
   `?vista=resumen|tabla|detalle|comite` y `&kpi=KPI-07`. Muestra cualquier error de

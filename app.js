@@ -710,7 +710,9 @@ function pintar() {
     : app.vista === 'detalle' ? vistaDetalle()
     : app.vista === 'comite'  ? vistaComite()
     :                           vistaResumen();
-  document.body.dataset.vista = app.vista;
+  // `data-pantalla` y no `data-vista`: el manejador de clics busca `[data-vista]`
+  // con closest(), y en el body haria que cualquier clic suelto cambiara de vista.
+  document.body.dataset.pantalla = app.vista;
 }
 
 function vistaCabecera() {
@@ -1098,7 +1100,8 @@ async function iniciar() {
 
 document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-accion],[data-vista],[data-kpi],[data-filtro],[data-orden]');
-  if (!t || !app.datos) return;
+  // El body nunca es un destino: si lo fuera, cualquier clic suelto actuaria.
+  if (!t || t === document.body || !app.datos) return;
 
   if (t.dataset.accion === 'guardar')  return guardar();
   if (t.dataset.accion === 'recargar') return recargar();
