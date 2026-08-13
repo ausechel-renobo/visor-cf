@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor CF · Tablero de Gerencia RENOBO</title>
+<meta name="description" content="Seguimiento de los 15 KPIs de la agenda gerencial RENOBO 2026–2027.">
+<meta name="theme-color" content="#fcfcfb">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b0b0b'/><rect x='7' y='18' width='4' height='7' rx='1.5' fill='%23d03b3b'/><rect x='14' y='13' width='4' height='12' rx='1.5' fill='%23fab219'/><rect x='21' y='8' width='4' height='17' rx='1.5' fill='%230ca30c'/></svg>">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- Pantalla de conexión: solo aparece la primera vez o si falla la sesión. -->
+<div id="portada" hidden></div>
+
+<div id="app" hidden>
+  <header id="cabecera"></header>
+  <main id="contenido"></main>
+</div>
+
+<noscript>
+  <p style="padding:24px;font:15px system-ui">
+    Este visor necesita JavaScript. Los datos están siempre disponibles en la hoja de cálculo de Google.
+  </p>
+</noscript>
+
+<script src="app.js"></script>
+</body>
+</html>

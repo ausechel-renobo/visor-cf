@@ -1,0 +1,13 @@
+# Archivos temporales de la sincronización de Google Drive
+.tmp.drivedownload/
+.tmp.driveupload/
+*.gdoc
+*.gsheet
+
+# Windows
+desktop.ini
+Thumbs.db
+
+# Editores
+.vscode/
+*.swp

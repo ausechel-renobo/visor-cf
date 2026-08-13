@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor CF · Vista previa</title>
+<link rel="stylesheet" href="app.css">
+<style>#portada { display: none !important; }</style>
+</head>
+<body>
+
+<div id="portada" hidden></div>
+<div id="app"><header id="cabecera"></header><main id="contenido"></main></div>
+
+<script>
+/* Cualquier error queda a la vista en vez de dejar la página en blanco. */
+window.addEventListener('error', e => {
+  document.body.insertAdjacentHTML('afterbegin',
+    `<pre style="background:#d03b3b;color:#fff;padding:16px;margin:0;white-space:pre-wrap;font:13px monospace">${e.message}\n${e.filename}:${e.lineno}:${e.colno}</pre>`);
+});
+</script>
+<script src="app.js"></script>
+<script>
+/* Vista previa del visor con datos de ejemplo: sirve para revisar el diseño
+   sin montar las credenciales de Google. Nada de lo que se edite aquí se
+   guarda en ninguna parte.
+
+   Uso:  vista-previa.html?vista=resumen | tabla | detalle | comite
+         &kpi=KPI-07   (para la vista de detalle) */
+
+const q = new URLSearchParams(location.search);
+
+/* Serie sintética de ago a nov de 2026, para que los gráficos tengan qué dibujar. */
+const MESES_DEMO = ['2026-08', '2026-09', '2026-10', '2026-11'];
+const serieDemo = {};
+SEMILLA.kpis.forEach((k, i) => {
+  const punto = {};
+  MESES_DEMO.forEach((m, j) => {
+    const arranque = (k.avance ?? 0) * 0.55;
+    const paso = ((k.avance ?? 0) - arranque) / (MESES_DEMO.length - 1);
+    let v = arranque + paso * j;
+    if (['conteo', 'm2'].includes(k.unidad)) v = Math.round(v);
+    punto[m] = v;
+  });
+  punto['2026-11'] = k.avance ?? 0;
+  serieDemo[k.id] = punto;
+});
+
+app.sheetId = 'DEMO';
+app.datos = {
+  config: { ...SEMILLA.config, mesCorte: '2026-11' },
+  kpis: SEMILLA.kpis.map(k => ({ ...k })),
+  serie: serieDemo,
+  hitos: SEMILLA.hitos.map((h, i) => ({ ...h, hecho: i % 4 === 0, fecha: i % 4 === 0 ? '2026-10-15' : '' })),
+  bitacora: SEMILLA.bitacora.map(b => ({ ...b }))
+};
+SEMILLA.kpis.forEach(k => recalcularDesdeHitos(k.id));
+
+app.vista = q.get('vista') || 'resumen';
+app.kpiSel = q.get('kpi') || 'KPI-07';
+app.cambios = ['demo'];          // para ver el aviso de cambios sin guardar
+mostrarApp();                    // app.js dejó visible su pantalla de conexión
+</script>
+</body>
+</html>

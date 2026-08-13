@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor CF · Verificación contra el Excel</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* app.js abre su pantalla de conexión al arrancar; aquí estorba. */
+  #portada, #app { display: none !important; }
+  #pruebas { max-width: 940px; margin: 0 auto; padding: 32px 24px; }
+  #pruebas h1 { font-size: 22px; margin-bottom: 4px; }
+  .intro { color: var(--tinta-2); margin: 0 0 24px; }
+  .marcador { font-size: 17px; font-weight: 600; padding: 12px 16px; border-radius: var(--r); margin-bottom: 20px; }
+  .todo-ok { background: color-mix(in oklab, var(--est-meta) 14%, var(--superficie)); }
+  .hay-fallos { background: color-mix(in oklab, var(--est-grave) 14%, var(--superficie)); }
+  #pruebas table { border-collapse: collapse; width: 100%; margin-bottom: 28px; background: var(--superficie); }
+  #pruebas th, #pruebas td { padding: 7px 10px; border-bottom: 1px solid var(--rejilla); text-align: left; font-size: 13.5px; }
+  #pruebas th { background: var(--plano); font-size: 12px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok  { color: var(--exito-texto); font-weight: 600; }
+  .mal { color: var(--est-grave); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- app.js espera estos contenedores; aquí quedan ocultos. -->
+<div id="portada" hidden></div>
+<div id="app" hidden><header id="cabecera"></header><main id="contenido"></main></div>
+
+<div id="pruebas"></div>
+
+<script src="app.js"></script>
+<script>
+/* Verificación de paridad contra Dashboard.xlsx, hoja «Dashboard RenoBo».
+   Los valores esperados están tomados de las columnas G y H del archivo.
+   Se abre con doble clic; no necesita conexión ni cuenta de Google. */
+
+// H6:H20 del Excel, traducido a los estados internos del visor.
+const ESTADO_EXCEL = [
+  'atencion', 'grave', 'grave', 'grave', 'atencion',
+  'grave', 'grave', 'atencion', 'grave', 'grave',
+  'grave', 'grave', 'grave', 'grave', 'grave'
+];
+
+// G6:G20 del Excel, con la precisión con la que están guardados.
+const PROGRESO_EXCEL = [
+  0.3, 0.15, 0.15, 0, 0.27677777777777779,
+  5.8272351458286704e-4, 0.18674698795180722, 0.25203252032520324, 0, 0.15,
+  0.33333333333333331, 0, 0, 0.05, 0.076923076923076927
+];
+
+const PROMEDIO_EXCEL = 0.12842642798838541;   // celda G21
+const TOL = 1e-9;
+
+// El estado que el visor necesita, montado desde la semilla.
+app.datos = {
+  config: { ...SEMILLA.config },
+  kpis: SEMILLA.kpis.map(k => ({ ...k })),
+  serie: {},
+  hitos: SEMILLA.hitos.map(h => ({ ...h })),
+  bitacora: []
+};
+
+const filas = [];
+let fallos = 0;
+
+app.datos.kpis.forEach((k, i) => {
+  const estObt = estado(k, app.datos.config);
+  const progObt = progresoFinal(k);
+  const okEst = estObt === ESTADO_EXCEL[i];
+  const okProg = Math.abs(progObt - PROGRESO_EXCEL[i]) < TOL;
+  if (!okEst || !okProg) fallos++;
+  filas.push(`<tr>
+    <td>${k.id}</td>
+    <td>${k.nombre}</td>
+    <td>${ETIQUETA_ESTADO[ESTADO_EXCEL[i]]}</td>
+    <td>${ETIQUETA_ESTADO[estObt]}</td>
+    <td class="${okEst ? 'ok' : 'mal'}">${okEst ? '✓' : '✗'}</td>
+    <td class="num">${(PROGRESO_EXCEL[i] * 100).toFixed(4)} %</td>
+    <td class="num">${(progObt * 100).toFixed(4)} %</td>
+    <td class="${okProg ? 'ok' : 'mal'}">${okProg ? '✓' : '✗'}</td>
+  </tr>`);
+});
+
+const g = indicadoresGlobales();
+const okProm = Math.abs(g.vsFinal - PROMEDIO_EXCEL) < TOL;
+if (!okProm) fallos++;
+
+document.getElementById('pruebas').innerHTML = `
+  <h1>Verificación contra <code>Dashboard.xlsx</code></h1>
+  <p class="intro">Compara el semáforo y el progreso que calcula el visor con las columnas
+    <code>G</code> y <code>H</code> de la hoja «Dashboard RenoBo», usando los datos de la semilla.</p>
+
+  <div class="marcador ${fallos ? 'hay-fallos' : 'todo-ok'}">
+    ${fallos ? `${fallos} comprobación${fallos === 1 ? '' : 'es'} sin coincidir` : 'Las 31 comprobaciones coinciden con el Excel'}
+  </div>
+
+  <table>
+    <thead><tr>
+      <th>ID</th><th>KPI</th>
+      <th>Estado Excel</th><th>Estado visor</th><th></th>
+      <th class="num">Progreso Excel</th><th class="num">Progreso visor</th><th></th>
+    </tr></thead>
+    <tbody>${filas.join('')}</tbody>
+  </table>
+
+  <table>
+    <thead><tr><th>Indicador global</th><th class="num">Excel</th><th class="num">Visor</th><th></th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Promedio de progreso hacia la meta final <code>(G21)</code></td>
+        <td class="num">${(PROMEDIO_EXCEL * 100).toFixed(6)} %</td>
+        <td class="num">${(g.vsFinal * 100).toFixed(6)} %</td>
+        <td class="${okProm ? 'ok' : 'mal'}">${okProm ? '✓' : '✗'}</td>
+      </tr>
+      <tr>
+        <td>Avance promedio hacia la meta 2026 <em>(no existe en el Excel)</em></td>
+        <td class="num">—</td>
+        <td class="num">${(g.vsAnio * 100).toFixed(2)} %</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>`;
+</script>
+</body>
+</html>

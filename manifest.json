@@ -1,0 +1,19 @@
+{
+  "name": "Visor CF · Tablero de Gerencia RENOBO",
+  "short_name": "Visor CF",
+  "description": "Seguimiento de los 15 KPIs de la agenda gerencial RENOBO 2026-2027.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f9f9f7",
+  "theme_color": "#fcfcfb",
+  "lang": "es-CO",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230b0b0b'/%3E%3Crect x='112' y='288' width='64' height='112' rx='24' fill='%23d03b3b'/%3E%3Crect x='224' y='208' width='64' height='192' rx='24' fill='%23fab219'/%3E%3Crect x='336' y='128' width='64' height='272' rx='24' fill='%230ca30c'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
