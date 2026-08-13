@@ -149,6 +149,31 @@ muestra **avance vs. meta del año** junto a **avance vs. meta final**.
 
 ---
 
+## Identidad visual
+
+Los colores salen de la hoja de estilos del sitio institucional
+(`renobo.com.co/themes/custom/theme_eru/assets/css/renobo_style.css`), no de una
+aproximación a ojo:
+
+| Rol | Color | Dónde |
+|---|---|---|
+| Verde petróleo | `#013334` | Cabecera, favicon, color de tema |
+| Verde marca | `#006b60` | Enlaces y la línea de datos de los gráficos |
+| Menta | `#00c29d` | El mismo papel en modo oscuro |
+| Lima | `#afe951` | Filo inferior de la cabecera |
+| Crema | `#fefcf1` | Fondo de página |
+
+**El semáforo no se tematiza.** Verde, ámbar y rojo cargan significado y están
+validados para daltonismo y contraste; teñirlos de institucional los rompería. Por
+eso la identidad entra por la cabecera y los acentos, y los datos se quedan como
+están. Las superficies oscuras también se mantienen neutras: los colores de estado
+están validados contra `#1a1a19`.
+
+Contrastes verificados: blanco sobre petróleo 13,8:1 · verde marca sobre superficie
+6,3:1 · menta sobre superficie oscura 7,6:1 · lima sobre petróleo 9,6:1.
+
+---
+
 ## Páginas de apoyo (no requieren Google)
 
 Ambas se abren con doble clic y funcionan sin conexión ni credenciales.
