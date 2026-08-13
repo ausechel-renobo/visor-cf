@@ -55,9 +55,10 @@ const TOL = 1e-9;
 
 // El estado que el visor necesita, montado desde la semilla.
 app.datos = {
-  config: { ...SEMILLA.config },
+  // mesCorte fijo en ago-26: es el corte del Excel contra el que se compara.
+  config: { ...SEMILLA.config, mesCorte: '2026-08' },
   kpis: SEMILLA.kpis.map(k => ({ ...k })),
-  serie: {},
+  historial: [],
   hitos: SEMILLA.hitos.map(h => ({ ...h })),
   bitacora: []
 };

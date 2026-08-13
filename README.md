@@ -85,8 +85,7 @@ direcciones): queda con icono propio y ventana sin barra de navegador.
 |---|---|
 | Editar una celda amarilla | Acumula el cambio. La cabecera muestra *«N cambios sin guardar»*. |
 | **Guardar** (`Ctrl+S`) | Escribe todo en la hoja de una sola vez. |
-| **Actualizar** | Vuelve a leer la hoja sin recargar la página. |
-| **Cerrar mes** | Congela el avance de los 15 KPIs en la columna del mes y adelanta el corte. Construye el histórico solo. |
+| **Recargar de la hoja** | Descarta lo que haya en pantalla y vuelve a traer los datos de la hoja. Útil si editó desde otro equipo. Avisa si hay cambios sin guardar. |
 | **Hoja** | Abre la hoja de cálculo en otra pestaña. |
 | **Comité** + `Ctrl+P` | PDF apaisado de una página para el comité directivo. |
 
@@ -104,10 +103,20 @@ combinadas — todo cálculo vive en el visor.
 | Hoja | Columnas |
 |---|---|
 | `KPIs` | `id · pilar · nombre · unidad · avance · meta2026 · meta2027 · metaFinal · responsable · avanceDesdeHitos` |
-| `Serie` | `kpiId` + una columna por mes, de `2026-08` a `2028-01` |
+| `Serie` | `kpiId · fecha · valor` — el histórico, una fila por cada vez que un avance cambió |
 | `Hitos` | `kpiId · nombre · hecho · fecha` |
 | `Bitacora` | `kpiId · fecha · autor · texto` |
-| `Config` | `clave · valor` — `titulo`, `mesCorte`, `umbralAtencion`, `revision` |
+| `Config` | `clave · valor` — `titulo`, `umbralAtencion`, `revision` |
+
+**El histórico se construye solo.** No hay cierre de mes ni ceremonia alguna: al
+guardar, cada avance que cambió respecto a su último registro queda anotado con
+la fecha del día. El gerente actualiza cuando tiene la información — tras un
+comité, una llamada, lo que sea— y la serie se arma sola con el ritmo real de la
+gestión. Las gráficas mensuales se derivan tomando el último valor de cada mes,
+así que el día exacto queda guardado sin ensuciar la lectura.
+
+El **mes de corte** tampoco se administra: es siempre el mes en curso, deducido de
+la fecha. Es lo que decide contra qué meta compara el semáforo (2026 o 2027).
 
 Unidades admitidas en `KPIs`: `conteo`, `porcentaje` (decimal: 0,15 = 15 %),
 `moneda` (millones de COP) y `m2`.

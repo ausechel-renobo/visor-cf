@@ -56,7 +56,6 @@ const RANGOS = ['KPIs!A1:J200', 'Serie!A1:Z200', 'Hitos!A1:D500', 'Bitacora!A1:D
 const SEMILLA = {
   config: {
     titulo: 'RENOBO · Tablero de Gerencia 2026–2027',
-    mesCorte: '2026-08',
     umbralAtencion: 0.4,
     revision: 1
   },
@@ -238,7 +237,7 @@ async function crearHoja() {
   const datos = {
     config: { ...SEMILLA.config },
     kpis: SEMILLA.kpis.map(k => ({ ...k })),
-    serie: Object.fromEntries(SEMILLA.kpis.map(k => [k.id, { '2026-08': k.avance }])),
+    historial: SEMILLA.kpis.map(k => ({ kpiId: k.id, fecha: '2026-08-01', valor: k.avance })),
     hitos: SEMILLA.hitos.map(h => ({ ...h })),
     bitacora: SEMILLA.bitacora.map(b => ({ ...b }))
   };
@@ -258,13 +257,26 @@ const booleano = v => v === true || String(v).toUpperCase() === 'TRUE' || String
 /* El visor escribe los meses como texto («2026-08»), pero si alguien los teclea
    en la hoja, Sheets los convierte en fecha y los devuelve como número de serie.
    Esto los normaliza en ambos casos. */
-function mesNormal(v) {
+function fechaNormal(v) {
   if (typeof v === 'number' && v > 20000) {
     const d = new Date(Date.UTC(1899, 11, 30) + v * 86400000);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    return d.toISOString().slice(0, 10);
   }
-  return String(v ?? '').slice(0, 7);
+  return String(v ?? '').slice(0, 10);
 }
+const mesNormal = v => fechaNormal(v).slice(0, 7);
+
+/* Mes en curso, acotado al horizonte del tablero. */
+function mesActual() {
+  const d = new Date();
+  const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  if (MESES.includes(m)) return m;
+  return m < MESES[0] ? MESES[0] : MESES[MESES.length - 1];
+}
+const hoyISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 function parsear(respuesta) {
   const porRango = {};
@@ -282,18 +294,29 @@ function parsear(respuesta) {
     return k;
   });
 
+  /* `Serie` es un registro fechado: kpiId · fecha · valor. Una fila por cada
+     vez que un avance cambió, no una columna por mes. */
   const filasSerie = porRango.Serie || [];
-  const cabecera = (filasSerie[0] || []).map((v, i) => i === 0 ? 'kpiId' : mesNormal(v));
-  const serie = {};
-  for (const fila of filasSerie.slice(1)) {
-    if (!fila || !fila[0]) continue;
-    const punto = {};
-    for (let i = 1; i < cabecera.length; i++) {
-      const v = numero(fila[i]);
-      if (v !== null) punto[cabecera[i]] = v;
+  const cabeza = filasSerie[0] || [];
+  let historial = [];
+
+  if (/^\d{4}-\d{2}$/.test(mesNormal(cabeza[1]))) {
+    // Formato antiguo (rejilla kpiId × meses): se convierte a registros fechados.
+    const meses = cabeza.map((v, i) => i === 0 ? null : mesNormal(v));
+    for (const f of filasSerie.slice(1)) {
+      if (!f || !f[0]) continue;
+      for (let i = 1; i < meses.length; i++) {
+        const v = numero(f[i]);
+        if (v !== null && meses[i]) historial.push({ kpiId: f[0], fecha: `${meses[i]}-01`, valor: v });
+      }
     }
-    serie[fila[0]] = punto;
+  } else {
+    historial = filasSerie.slice(1)
+      .filter(f => f && f[0] && f[1])
+      .map(f => ({ kpiId: f[0], fecha: fechaNormal(f[1]), valor: numero(f[2]) }))
+      .filter(r => r.valor !== null && r.fecha);
   }
+  historial.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.kpiId.localeCompare(b.kpiId));
 
   const hitos = (porRango.Hitos || []).slice(1)
     .filter(f => f && f[0])
@@ -309,10 +332,10 @@ function parsear(respuesta) {
     const v = numero(f[1]);
     config[f[0]] = (f[0] === 'umbralAtencion' || f[0] === 'revision') ? (v ?? config[f[0]]) : f[1];
   }
-  config.mesCorte = mesNormal(config.mesCorte) || SEMILLA.config.mesCorte;
-  if (!MESES.includes(config.mesCorte)) config.mesCorte = SEMILLA.config.mesCorte;
+  // El corte ya no se adelanta a mano: es el mes en curso.
+  config.mesCorte = mesActual();
 
-  return { config, kpis, serie, hitos, bitacora };
+  return { config, kpis, historial, hitos, bitacora };
 }
 
 function serializar(d) {
@@ -322,10 +345,8 @@ function serializar(d) {
     return v === null || v === undefined ? '' : v;
   }))];
 
-  const filasSerie = [['kpiId', ...MESES], ...d.kpis.map(k => {
-    const punto = d.serie[k.id] || {};
-    return [k.id, ...MESES.map(m => (punto[m] ?? ''))];
-  })];
+  const filasSerie = [['kpiId', 'fecha', 'valor'],
+    ...d.historial.map(r => [r.kpiId, r.fecha, r.valor])];
 
   const filasHitos = [['kpiId', 'nombre', 'hecho', 'fecha'],
     ...d.hitos.map(h => [h.kpiId, h.nombre, h.hecho ? 'TRUE' : 'FALSE', h.fecha || ''])];
@@ -333,8 +354,9 @@ function serializar(d) {
   const filasBit = [['kpiId', 'fecha', 'autor', 'texto'],
     ...d.bitacora.map(b => [b.kpiId, b.fecha, b.autor, b.texto])];
 
+  // mesCorte no se guarda: se deduce de la fecha en cada carga.
   const filasCfg = [['clave', 'valor'],
-    ...Object.entries(d.config).map(([k, v]) => [k, v ?? ''])];
+    ...Object.entries(d.config).filter(([k]) => k !== 'mesCorte').map(([k, v]) => [k, v ?? ''])];
 
   return [
     { range: 'KPIs!A1',     values: filasKpi },
@@ -398,13 +420,15 @@ async function guardar() {
       if (!seguir) { app.guardando = false; pintar(); return; }
     }
     app.datos.config.revision = Number(actual.config.revision || 0) + 1;
+    anotarHistorial();
 
     // Se escribe primero y solo después se borran las filas sobrantes: si algo
     // falla a mitad, nunca queda la hoja vacía.
     await escribirHoja(app.sheetId, serializar(app.datos));
     await limpiarRangos(app.sheetId, [
       `KPIs!A${app.datos.kpis.length + 2}:J`,
-      `Serie!A${app.datos.kpis.length + 2}:S`,
+      `Serie!A${app.datos.historial.length + 2}:C`,
+      'Serie!D1:Z',      // restos de la rejilla mensual del formato anterior
       `Hitos!A${app.datos.hitos.length + 2}:D`,
       `Bitacora!A${app.datos.bitacora.length + 2}:D`
     ]);
@@ -429,20 +453,20 @@ async function recargar() {
   }
 }
 
-/* Cierre de mes: congela el avance de cada KPI en la columna del mes de corte
-   y adelanta el corte. Reemplaza el llenado manual del histórico del Excel. */
-function cerrarMes() {
-  const mes = app.datos.config.mesCorte;
-  const i = MESES.indexOf(mes);
-  if (i < 0) return alert('El mes de corte no está dentro del horizonte del tablero.');
-  if (!confirm(`Se guardará el avance actual de los ${app.datos.kpis.length} KPIs en ${nombreMes(mes)} y el corte pasará a ${nombreMes(MESES[i + 1] || mes)}.\n\n¿Continuar?`)) return;
-
+/* El histórico se construye solo: al guardar, cada avance que cambió respecto
+   a su último registro queda anotado con la fecha del día. Sin cierres de mes
+   ni ceremonias: el gerente actualiza cuando tiene la información. */
+function anotarHistorial() {
+  const hoy = hoyISO();
   for (const k of app.datos.kpis) {
-    app.datos.serie[k.id] = app.datos.serie[k.id] || {};
-    app.datos.serie[k.id][mes] = k.avance ?? 0;
+    if (!Number.isFinite(k.avance)) continue;
+    const propios = app.datos.historial.filter(r => r.kpiId === k.id);
+    const ultimo = propios[propios.length - 1];
+    if (ultimo && ultimo.valor === k.avance) continue;              // no se movió
+    if (ultimo && ultimo.fecha === hoy) { ultimo.valor = k.avance; continue; }  // ya hay registro de hoy
+    app.datos.historial.push({ kpiId: k.id, fecha: hoy, valor: k.avance });
   }
-  if (i + 1 < MESES.length) app.datos.config.mesCorte = MESES[i + 1];
-  registrar(`Cierre de ${nombreMes(mes)}`);
+  app.datos.historial.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.kpiId.localeCompare(b.kpiId));
 }
 
 /* ===========================================================================
@@ -498,12 +522,20 @@ const ICONO_ESTADO    = { meta: '✓', atencion: '!', grave: '×', sindato: '·'
 const pastilla = (est, extra = '') =>
   `<span class="pastilla ${extra} est-${est}"><i aria-hidden="true">${ICONO_ESTADO[est]}</i>${ETIQUETA_ESTADO[est]}</span>`;
 
+/* Puntos mensuales derivados del registro fechado: de cada mes se toma el
+   último valor anotado. El día exacto queda guardado, pero la gráfica se lee
+   mejor por mes. */
 function puntosSerie(kpiId, hastaMes) {
-  const punto = app.datos.serie[kpiId] || {};
-  const tope = MESES.indexOf(hastaMes);
-  return MESES
-    .filter((m, i) => (tope < 0 || i <= tope) && Number.isFinite(punto[m]))
-    .map(m => ({ mes: m, valor: punto[m] }));
+  const porMes = new Map();
+  for (const r of app.datos.historial) {          // viene ordenado por fecha
+    if (r.kpiId !== kpiId) continue;
+    const mes = r.fecha.slice(0, 7);
+    if (hastaMes && mes > hastaMes) continue;
+    porMes.set(mes, r.valor);
+  }
+  return [...porMes.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([mes, valor]) => ({ mes, valor }));
 }
 
 function deltaMes(kpi, cfg) {
@@ -616,8 +648,8 @@ function graficoEvolucion(kpi, cfg, ancho = 640, alto = 260) {
   const meta = metaAnio(kpi, cfg.mesCorte);
 
   if (!puntos.length) {
-    return `<p class="aviso">Todavía no hay serie histórica para este KPI.
-      Se construye sola: cada vez que uses <strong>Cerrar mes</strong> se guarda un punto.</p>`;
+    return `<p class="aviso">Todavía no hay histórico para este KPI.
+      Se construye solo: cada vez que guardes un avance distinto al anterior, queda anotado con su fecha.</p>`;
   }
 
   const ejeMeses = MESES.slice(0, Math.max(MESES.indexOf(mesesAnio[mesesAnio.length - 1]) + 1, MESES.indexOf(cfg.mesCorte) + 1));
@@ -704,7 +736,6 @@ function vistaCabecera() {
         <button class="btn btn-primario" data-accion="guardar" ${pendientes && !app.guardando ? '' : 'disabled'}>Guardar</button>
         <button class="btn" data-accion="recargar"
           title="Descarta lo que tengas en pantalla y vuelve a traer los datos de la hoja">Recargar de la hoja</button>
-        <button class="btn" data-accion="cerrar-mes">Cerrar mes</button>
         <button class="btn btn-sutil" data-accion="hoja" title="Abrir la hoja de cálculo">Hoja</button>
       </div>
     </div>
@@ -1069,10 +1100,9 @@ document.addEventListener('click', (ev) => {
   const t = ev.target.closest('[data-accion],[data-vista],[data-kpi],[data-filtro],[data-orden]');
   if (!t || !app.datos) return;
 
-  if (t.dataset.accion === 'guardar')   return guardar();
-  if (t.dataset.accion === 'recargar')  return recargar();
-  if (t.dataset.accion === 'cerrar-mes')return cerrarMes();
-  if (t.dataset.accion === 'hoja')      return window.open(`https://docs.google.com/spreadsheets/d/${app.sheetId}/edit`, '_blank');
+  if (t.dataset.accion === 'guardar')  return guardar();
+  if (t.dataset.accion === 'recargar') return recargar();
+  if (t.dataset.accion === 'hoja')     return window.open(`https://docs.google.com/spreadsheets/d/${app.sheetId}/edit`, '_blank');
 
   if (t.dataset.vista)  { app.vista = t.dataset.vista; app.kpiSel = null; return pintar(); }
   if (t.dataset.filtro !== undefined && !t.dataset.kpi) { app.filtroEstado = t.dataset.filtro || null; return pintar(); }

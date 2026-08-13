@@ -35,27 +35,28 @@ window.addEventListener('error', e => {
 
 const q = new URLSearchParams(location.search);
 
-/* Serie sintética de ago a nov de 2026, para que los gráficos tengan qué dibujar. */
-const MESES_DEMO = ['2026-08', '2026-09', '2026-10', '2026-11'];
-const serieDemo = {};
-SEMILLA.kpis.forEach((k, i) => {
-  const punto = {};
-  MESES_DEMO.forEach((m, j) => {
-    const arranque = (k.avance ?? 0) * 0.55;
-    const paso = ((k.avance ?? 0) - arranque) / (MESES_DEMO.length - 1);
-    let v = arranque + paso * j;
+/* Registro sintético de ago a nov de 2026, para que los gráficos tengan qué
+   dibujar. Mismo formato que el real: kpiId · fecha · valor. */
+const FECHAS_DEMO = ['2026-08-14', '2026-09-09', '2026-10-22', '2026-11-06'];
+const historialDemo = [];
+SEMILLA.kpis.forEach(k => {
+  const meta = k.avance ?? 0;
+  const arranque = meta * 0.55;
+  FECHAS_DEMO.forEach((f, j) => {
+    let v = j === FECHAS_DEMO.length - 1
+      ? meta
+      : arranque + ((meta - arranque) / (FECHAS_DEMO.length - 1)) * j;
     if (['conteo', 'm2'].includes(k.unidad)) v = Math.round(v);
-    punto[m] = v;
+    historialDemo.push({ kpiId: k.id, fecha: f, valor: v });
   });
-  punto['2026-11'] = k.avance ?? 0;
-  serieDemo[k.id] = punto;
 });
+historialDemo.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.kpiId.localeCompare(b.kpiId));
 
 app.sheetId = 'DEMO';
 app.datos = {
   config: { ...SEMILLA.config, mesCorte: '2026-11' },
   kpis: SEMILLA.kpis.map(k => ({ ...k })),
-  serie: serieDemo,
+  historial: historialDemo,
   hitos: SEMILLA.hitos.map((h, i) => ({ ...h, hecho: i % 4 === 0, fecha: i % 4 === 0 ? '2026-10-15' : '' })),
   bitacora: SEMILLA.bitacora.map(b => ({ ...b }))
 };
