@@ -56,6 +56,10 @@
 }
 
 * { box-sizing: border-box; }
+
+/* El `display: grid` de #portada le gana al `display: none` que el navegador
+   aplica por el atributo `hidden`. Sin esto, la portada nunca se oculta. */
+[hidden] { display: none !important; }
 body {
   margin: 0; background: var(--plano); color: var(--tinta-1);
   font: 15px/1.5 var(--sans);

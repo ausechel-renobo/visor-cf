@@ -702,7 +702,8 @@ function vistaCabecera() {
       <div class="acciones">
         ${estadoGuardado}
         <button class="btn btn-primario" data-accion="guardar" ${pendientes && !app.guardando ? '' : 'disabled'}>Guardar</button>
-        <button class="btn" data-accion="recargar" title="Volver a leer la hoja">Actualizar</button>
+        <button class="btn" data-accion="recargar"
+          title="Descarta lo que tengas en pantalla y vuelve a traer los datos de la hoja">Recargar de la hoja</button>
         <button class="btn" data-accion="cerrar-mes">Cerrar mes</button>
         <button class="btn btn-sutil" data-accion="hoja" title="Abrir la hoja de cálculo">Hoja</button>
       </div>
