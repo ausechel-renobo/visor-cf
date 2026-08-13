@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Visor CF · Vista previa</title>
 <link rel="stylesheet" href="app.css">
-<style>#portada { display: none !important; }</style>
+<style>
+  /* app.js arranca su propio flujo de conexión de forma asíncrona y volvería a
+     ocultar el tablero al terminar. Con !important gana la vista previa. */
+  #portada { display: none !important; }
+  #app     { display: block !important; }
+</style>
 </head>
 <body>
 

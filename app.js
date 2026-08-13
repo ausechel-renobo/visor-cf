@@ -137,10 +137,12 @@ function cargarScript(src) {
   });
 }
 
-async function prepararSesion(clientId) {
-  if (!window.google?.accounts?.oauth2) {
-    await cargarScript('https://accounts.google.com/gsi/client');
-  }
+/* Síncrona a propósito: se llama desde el clic del usuario y cualquier `await`
+   previo consumiría la activación del gesto, con lo que el navegador
+   bloquearía la ventana emergente de Google. El script GIS se precarga en
+   §6 antes de mostrar nada. */
+function prepararSesion(clientId) {
+  if (!window.google?.accounts?.oauth2) throw new Error('No se pudo cargar el conector de Google. Revisa la conexión.');
   sesion.clienteToken = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: ALCANCE,
@@ -148,26 +150,38 @@ async function prepararSesion(clientId) {
   });
 }
 
-/* Pide un token. Con `prompt: ''` Google lo renueva en silencio mientras la
-   sesión del navegador siga viva; si no, abre la ventana de autorización —
-   por eso las llamadas que puedan necesitarla salen de un clic del usuario. */
-function pedirToken() {
+/* `interactivo` abre la ventana de autorización; hay que llamarlo desde un
+   clic. Sin él usa `prompt: ''`, que renueva en silencio una autorización ya
+   concedida — pero si no hay nada que renovar no muestra nada NI llama a
+   ningún callback, de ahí el guardia de tiempo. */
+function pedirToken(interactivo = false) {
   return new Promise((ok, falla) => {
     if (!sesion.clienteToken) return falla(new Error('Sesión no inicializada'));
+
+    let listo = false;
+    const cerrar = (fn, arg) => { if (listo) return; listo = true; clearTimeout(guardia); fn(arg); };
+    const guardia = setTimeout(() => cerrar(falla, new Error(
+      interactivo
+        ? 'Google no respondió. Lo más probable es que el navegador bloqueara la ventana emergente: permítela para este sitio y vuelve a intentarlo.'
+        : 'sin sesión activa')),
+      interactivo ? 90_000 : 8_000);
+
     sesion.clienteToken.callback = (resp) => {
-      if (resp.error) return falla(new Error(resp.error_description || resp.error));
+      if (resp.error) return cerrar(falla, new Error(resp.error_description || resp.error));
       sesion.token = resp.access_token;
       sesion.expira = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
-      ok(sesion.token);
+      cerrar(ok, sesion.token);
     };
-    sesion.clienteToken.error_callback = (err) => falla(new Error(err?.message || 'No se pudo autorizar'));
-    sesion.clienteToken.requestAccessToken({ prompt: '' });
+    sesion.clienteToken.error_callback = (err) =>
+      cerrar(falla, new Error(err?.message || err?.type || 'No se pudo autorizar'));
+
+    sesion.clienteToken.requestAccessToken({ prompt: interactivo ? 'consent' : '' });
   });
 }
 
 async function tokenVigente() {
   if (sesion.token && Date.now() < sesion.expira - 60_000) return sesion.token;
-  return pedirToken();
+  return pedirToken(false);
 }
 
 async function api(ruta, opciones = {}, reintento = false) {
@@ -977,9 +991,18 @@ function pantallaConfig(mensaje = '') {
     if (m) sheetId = m[1];
 
     try {
-      pantalla('<div class="portada-caja"><p class="portada-sub">Conectando con Google…</p></div>');
-      await prepararSesion(clientId);
-      await pedirToken();
+      // El orden importa: `requestAccessToken` tiene que salir del clic, sin
+      // ningún `await` por delante, o la ventana emergente queda bloqueada.
+      prepararSesion(clientId);
+      const autorizacion = pedirToken(true);
+      pantalla(`<div class="portada-caja">
+          <h1>Conectando con Google…</h1>
+          <p class="portada-sub">Se abrió una ventana para que autorices el acceso a tu hoja.
+          Si no la ves, revisa si el navegador bloqueó las ventanas emergentes de este sitio.</p>
+        </div>`);
+      await autorizacion;
+
+      pantalla('<div class="portada-caja"><h1>Preparando el tablero…</h1><p class="portada-sub">Creando la hoja y cargando los 15 KPIs.</p></div>');
       if (!sheetId) sheetId = await crearHoja();
       guardarConfig({ clientId, sheetId });
       await iniciar();
@@ -1001,7 +1024,8 @@ function pantallaConectar(mensaje = '') {
       <p><button class="enlace" id="btn-reconfig">Usar otra hoja o cambiar las credenciales</button></p>
     </div>`);
   document.getElementById('btn-conectar').addEventListener('click', async () => {
-    try { await pedirToken(); await iniciar(); }
+    const p = pedirToken(true);        // dentro del gesto, sin await previo
+    try { await p; await iniciar(); }
     catch (e) { pantallaConectar(e.message); }
   });
   document.getElementById('btn-reconfig').addEventListener('click', () => pantallaConfig());
@@ -1012,9 +1036,10 @@ async function iniciar() {
   if (!cfg.clientId || !cfg.sheetId) return pantallaConfig();
 
   try {
-    if (!sesion.clienteToken) await prepararSesion(cfg.clientId);
+    if (!sesion.clienteToken) prepararSesion(cfg.clientId);
     if (!sesion.token) {
-      try { await pedirToken(); }
+      // Renovación silenciosa; si no hay autorización viva, hace falta un clic.
+      try { await pedirToken(false); }
       catch { return pantallaConectar(); }
     }
 
@@ -1127,4 +1152,20 @@ window.addEventListener('beforeunload', (ev) => {
   if (app.cambios.length) { ev.preventDefault(); ev.returnValue = ''; }
 });
 
-iniciar();
+/* El conector de Google se carga antes de mostrar nada, para que al pulsar
+   «Conectar» no haya ningún `await` entre el clic y la ventana emergente. */
+async function arrancar() {
+  pantalla('<div class="portada-caja"><h1>Visor CF</h1><p class="portada-sub">Cargando…</p></div>');
+  try {
+    await cargarScript('https://accounts.google.com/gsi/client');
+  } catch {
+    return pantalla(`<div class="portada-caja">
+      <h1>Sin conexión con Google</h1>
+      <p class="portada-sub">No se pudo cargar el conector de Google. Revisa la conexión a internet
+      y recarga la página. Si el problema persiste, puede que la red de la entidad esté bloqueando
+      <code>accounts.google.com</code>.</p></div>`);
+  }
+  iniciar();
+}
+
+arrancar();
