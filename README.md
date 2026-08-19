@@ -87,10 +87,35 @@ direcciones): queda con icono propio y ventana sin barra de navegador.
 | **Guardar** (`Ctrl+S`) | Escribe todo en la hoja de una sola vez. |
 | **Recargar de la hoja** | Descarta lo que haya en pantalla y vuelve a traer los datos de la hoja. Útil si editó desde otro equipo. Avisa si hay cambios sin guardar. |
 | **Hoja** | Abre la hoja de cálculo en otra pestaña. |
+| **Comité** | La misma lectura que *Tabla*, con las mismas nueve columnas, pero de solo lectura y con filtros por columna. |
 | **Comité** + `Ctrl+P` | PDF apaisado de una página para el comité directivo. |
 
 Si se cierra la ventana con cambios pendientes, el navegador avisa; y al volver a
 abrir, el visor ofrece recuperarlos.
+
+### Los filtros del comité
+
+Cada encabezado de la vista de comité lleva un **embudo** (`▾`) que abre el mismo
+menú de un autofiltro de Excel: ordenar por esa columna en los dos sentidos y, en
+*Pilar*, *Estado* y *Responsable*, una casilla por valor. El embudo se pinta
+relleno (`▼`) cuando su columna está filtrando.
+
+- **Los filtros se cruzan**: *Responsable = Subgerencia planeamiento* + *Estado =
+  Grave* deja solo los KPI que cumplen las dos condiciones.
+- **Las cifras de arriba siguen al filtro.** Filtrar por una subgerencia y que el
+  titular siguiera hablando de los quince sería engañoso, así que el promedio y el
+  recuento del semáforo se recalculan sobre lo que queda a la vista. El subtítulo
+  avisa: *«8 de 15 indicadores»*.
+- **Ordenar por estado pone lo crítico arriba**, no lo alfabético: el menú lo dice
+  con esas palabras. Vale también para la vista de *Tabla*.
+- **Nada de esto toca los datos ni la hoja.** Filtrar no genera cambios sin
+  guardar, y la vista de *Tabla* conserva su propio orden: lo que el gerente
+  acomoda para el comité no le descoloca la tabla de trabajo. Tampoco queda
+  guardado entre sesiones; al recargar vuelven los quince.
+- **Al imprimir** desaparecen los embudos y el enlace de quitar filtros, pero se
+  quedan las pastillas de lo filtrado: quien lee el PDF necesita saber que no está
+  viendo los quince. Se verificó que las nueve columnas caben en **una página**
+  apaisada, en Letter y en A4, con y sin filtros.
 
 ---
 
@@ -116,7 +141,10 @@ gestión. Las gráficas mensuales se derivan tomando el último valor de cada me
 así que el día exacto queda guardado sin ensuciar la lectura.
 
 El **mes de corte** tampoco se administra: es siempre el mes en curso, deducido de
-la fecha. Es lo que decide contra qué meta compara el semáforo (2026 o 2027).
+la fecha. Es lo que decide contra qué meta compara el semáforo (2026 o 2027). La
+cabecera no lo nombra —decir «mes de corte: ago-26» no aportaba nada cuando no hay
+otro corte posible—: muestra la fecha del día en que se está mirando el tablero,
+que es lo que interesa saber, y es también la que encabeza el PDF del comité.
 
 Unidades admitidas en `KPIs`: `conteo`, `porcentaje` (decimal: 0,15 = 15 %),
 `moneda` (millones de COP) y `m2`.
@@ -182,6 +210,11 @@ Ambas se abren con doble clic y funcionan sin conexión ni credenciales.
   coinciden con las columnas `G` y `H` de `Dashboard.xlsx`, incluido el promedio de
   `G21` (12,842643 %). Son 31 comprobaciones. Conviene volver a abrirla cada vez que
   se toque `calculos` o la semilla.
+- **`pruebas-comite.html`** — pulsa los mandos de los filtros del comité —el embudo,
+  las casillas, las pastillas de filtro activo— y comprueba qué queda en la tabla,
+  que las cifras de cabecera sigan al filtro y que la vista de *Tabla* no se entere.
+  Son 37 comprobaciones. Cubre el manejador global de clics, que es donde este visor
+  ya se rompió una vez.
 - **`pruebas-interaccion.html`** — simula los clics de la vista de detalle y comprueba
   que escribir en los campos no expulsa al resumen, y que la navegación sí responde.
   Nació de un fallo real: `<body>` llevaba `data-vista` y el manejador global de clics

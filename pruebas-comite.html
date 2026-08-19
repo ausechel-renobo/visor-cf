@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visor CF · Pruebas de los filtros del comité</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  #portada, #app { display: none !important; }
+  #diag { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  #diag h1 { font-size: 20px; margin-bottom: 4px; }
+  .intro { color: var(--tinta-2); margin: 0 0 22px; }
+  .marcador { font-size: 16px; font-weight: 600; padding: 12px 16px; border-radius: var(--r); margin-bottom: 18px; }
+  .todo-ok { background: color-mix(in oklab, var(--est-meta) 14%, var(--superficie)); }
+  .hay-fallos { background: color-mix(in oklab, var(--est-grave) 14%, var(--superficie)); }
+  #detalle { font: 13px/1.8 ui-monospace, "Cascadia Mono", monospace; white-space: pre-wrap; }
+  .grupo { display: block; margin-top: 14px; color: var(--tinta-2); font-weight: 600; }
+  .ok { color: var(--exito-texto); }
+  .mal { color: var(--est-grave); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div id="portada" hidden></div>
+<div id="app"><header id="cabecera"></header><main id="contenido"></main></div>
+<div id="diag">ejecutando…</div>
+
+<script src="app.js"></script>
+<script>
+/* Pruebas de los filtros y el orden por columna de la vista de comité.
+   Se pulsan los mandos de verdad —el embudo del encabezado, las casillas del
+   desplegable, las pastillas de filtro activo— y se comprueba qué queda en la
+   tabla. Así se cubre el manejador global de clics, que es donde este visor ya
+   se rompió una vez. Se abre con doble clic; sin red ni credenciales. */
+
+const salida = [];
+const comprobar = (titulo, obtenido, esperado) => {
+  const bien = String(obtenido) === String(esperado);
+  salida.push({ bien, texto: `${titulo}: ${obtenido}` + (bien ? '' : `   ← se esperaba ${esperado}`) });
+};
+const grupo = t => salida.push({ grupo: true, bien: true, texto: t });
+
+app.sheetId = 'PRUEBAS';
+app.datos = {
+  config: { ...SEMILLA.config, mesCorte: '2026-08' },
+  kpis: SEMILLA.kpis.map(k => ({ ...k })),
+  historial: SEMILLA.kpis.map(k => ({ kpiId: k.id, fecha: '2026-08-01', valor: k.avance })),
+  hitos: SEMILLA.hitos.map(h => ({ ...h })),
+  bitacora: SEMILLA.bitacora.map(b => ({ ...b }))
+};
+
+const TODOS = app.datos.kpis.length;
+const filas    = () => document.querySelectorAll('.tabla-comite tbody tr').length;
+const idsFila  = () => [...document.querySelectorAll('.tabla-comite tbody tr')].map(f => f.dataset.fila || f.querySelector('.col-id').textContent);
+const embudo   = col => document.querySelector(`.tabla-comite [data-cmenu="${col}"]`);
+const casillas = () => [...document.querySelectorAll('.menu-col [data-cvalor]')];
+// Un clic real, con burbuja, igual que el del gerente.
+const pulsar   = el => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+const marcar   = (el, v) => { el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); };
+/* Cada cambio repinta la vista entera, con lo que las casillas que ya tuviera
+   en la mano quedan desconectadas del documento. Hay que volver a buscarlas
+   despues de cada clic; de ahi el bucle en vez de un forEach. */
+const dejarSolo = etiqueta => {
+  for (let vuelta = 0; vuelta < 20; vuelta++) {
+    const sobra = casillas().find(c => c.checked && c.parentElement.textContent.trim() !== etiqueta);
+    if (!sobra) return;
+    marcar(sobra, false);
+  }
+};
+
+app.vista = 'comite';
+pintar();
+
+grupo('Punto de partida');
+comprobar('columnas del comité', document.querySelectorAll('.tabla-comite thead th').length, 9);
+comprobar('filas visibles', filas(), TODOS);
+comprobar('embudos en el encabezado', document.querySelectorAll('.tabla-comite [data-cmenu]').length, 9);
+comprobar('el encabezado ya no dice «mes de corte»', /Mes de corte|Corte a/.test(document.getElementById('app').innerHTML), false);
+comprobar('el encabezado trae la fecha de hoy', document.querySelector('.comite-enc p').textContent.includes(fechaHoyLarga()), true);
+
+grupo('Abrir y cerrar el desplegable');
+pulsar(embudo('responsable'));
+comprobar('el desplegable se abre', document.querySelectorAll('.menu-col').length, 1);
+comprobar('ofrece una casilla por dirección', casillas().length, RESPONSABLES.length);
+comprobar('todas empiezan marcadas', casillas().every(c => c.checked), true);
+pulsar(embudo('responsable'));
+comprobar('el mismo embudo lo cierra', document.querySelectorAll('.menu-col').length, 0);
+pulsar(embudo('estado'));
+comprobar('otro embudo abre el suyo', app.comite.menu, 'estado');
+pulsar(document.querySelector('.tabla-comite tbody .col-nombre'));
+comprobar('un clic fuera lo cierra', document.querySelectorAll('.menu-col').length, 0);
+comprobar('y no cambia de vista', app.vista, 'comite');
+
+grupo('Filtrar por dirección');
+/* Planeamiento y no Gerencia: sus KPI reparten estados, asi que el cruce con
+   «Grave» del bloque siguiente reduce de verdad. Los cinco de Gerencia estan
+   todos en grave y el cruce no habria demostrado nada. */
+const DIR = 'Subgerencia planeamiento';
+pulsar(embudo('responsable'));
+dejarSolo(DIR);
+pulsar(embudo('responsable'));
+const deDir = app.datos.kpis.filter(k => k.responsable === DIR);
+comprobar(`filas de ${DIR}`, filas(), deDir.length);
+comprobar('todas las filas son de esa dirección',
+  [...document.querySelectorAll('.tabla-comite tbody .col-resp')].every(c => c.textContent.trim() === DIR), true);
+comprobar('el embudo queda señalado', embudo('responsable').classList.contains('activa'), true);
+comprobar('el subtítulo avisa del filtro',
+  document.querySelector('.comite-enc p').textContent.endsWith(`${deDir.length} de ${TODOS} indicadores`), true);
+comprobar('las cifras de cabecera se recalculan sobre lo filtrado',
+  document.querySelector('.comite-cifras span').textContent, fmtPct(indicadoresGlobales(deDir).vsAnio));
+comprobar('y no son las de los quince',
+  document.querySelector('.comite-cifras span').textContent !== fmtPct(indicadoresGlobales(app.datos.kpis).vsAnio), true);
+
+grupo('Cruzar dos filtros');
+pulsar(embudo('estado'));
+dejarSolo(ETIQUETA_ESTADO.grave);
+pulsar(embudo('estado'));
+const cruce = deDir.filter(k => estado(k, app.datos.config) === 'grave');
+comprobar('dirección + Grave', filas(), cruce.length);
+comprobar('el cruce reduce respecto a un solo filtro', cruce.length < deDir.length, true);
+comprobar('dos pastillas de filtro activo', document.querySelectorAll('.chip-filtro').length, 2);
+
+grupo('Quitar filtros');
+pulsar(document.querySelector('.chip-filtro'));
+comprobar('la pastilla quita su filtro', document.querySelectorAll('.chip-filtro').length, 1);
+pulsar(document.querySelector('[data-climpiar]'));
+comprobar('«Quitar todos» los devuelve todos', filas(), TODOS);
+comprobar('y retira la barra de filtros', document.querySelectorAll('.filtros-comite').length, 0);
+
+grupo('Desmarcar todo');
+pulsar(embudo('pilar'));
+pulsar(document.querySelector('[data-cninguno="pilar"]'));
+comprobar('«Ninguno» no deja filas', filas(), 0);
+comprobar('pero avisa en vez de dejar la tabla muda', document.querySelectorAll('.vacio-comite').length, 1);
+pulsar(document.querySelector('[data-ctodos="pilar"]'));
+comprobar('«Todos» las devuelve', filas(), TODOS);
+
+grupo('Ordenar');
+const gravedad = { grave: 0, atencion: 1, sindato: 2, meta: 3 };
+const estDe = id => estado(app.datos.kpis.find(k => k.id === id), app.datos.config);
+pulsar(document.querySelector('.tabla-comite [data-corden="estado"]'));
+comprobar('el encabezado ordena por estado', app.comite.orden.col, 'estado');
+comprobar('lo más crítico queda arriba', estDe(idsFila()[0]), 'grave');
+comprobar('el orden de gravedad es monótono',
+  idsFila().every((id, i) => i === 0 || gravedad[estDe(idsFila()[i - 1])] <= gravedad[estDe(id)]), true);
+pulsar(document.querySelector('.tabla-comite [data-corden="estado"]'));
+comprobar('el segundo clic invierte', app.comite.orden.asc, false);
+
+pulsar(embudo('progreso'));
+pulsar(document.querySelector('.menu-col [data-corden="progreso"][data-casc="0"]'));
+comprobar('desde el desplegable el orden es explícito', `${app.comite.orden.col} ${app.comite.orden.asc}`, 'progreso false');
+comprobar('y el desplegable se cierra al ordenar', document.querySelectorAll('.menu-col').length, 0);
+const progDe = id => progresoFinal(app.datos.kpis.find(k => k.id === id)) ?? -1;
+comprobar('de mayor a menor progreso',
+  idsFila().every((id, i) => i === 0 || progDe(idsFila()[i - 1]) >= progDe(id)), true);
+
+grupo('Nada de esto toca la tabla de trabajo ni los datos');
+comprobar('el orden de la tabla sigue en su sitio', `${app.orden.col} ${app.orden.asc}`, 'id true');
+app.vista = 'tabla'; pintar();
+comprobar('la tabla muestra los 15 aunque el comité esté filtrado', document.querySelectorAll('.tabla tbody tr').length, TODOS);
+comprobar('ningún cambio pendiente: filtrar no es editar', app.cambios.length, 0);
+
+const fallos = salida.filter(s => !s.bien).length;
+const pruebas = salida.filter(s => !s.grupo).length;
+document.getElementById('diag').innerHTML = `
+  <h1>Pruebas de los filtros del comité</h1>
+  <p class="intro">Pulsa los mandos de verdad —embudo, casillas, pastillas— y comprueba qué queda en la tabla,
+     que las cifras de cabecera sigan al filtro y que la tabla de trabajo no se entere.</p>
+  <div class="marcador ${fallos ? 'hay-fallos' : 'todo-ok'}">
+    ${fallos ? `${fallos} de ${pruebas} comprobaciones fallaron` : `Las ${pruebas} comprobaciones pasan`}
+  </div>
+  <div id="detalle">${salida.map(s =>
+    s.grupo ? `<span class="grupo">${s.texto}</span>`
+            : `<span class="${s.bien ? 'ok' : 'mal'}">${s.bien ? '✓' : '✗'}</span>  ${s.texto}`
+  ).join('\n')}</div>`;
+</script>
+</body>
+</html>

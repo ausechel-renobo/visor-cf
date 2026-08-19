@@ -376,6 +376,11 @@ const app = {
   kpiSel: null,
   filtroEstado: null,
   orden: { col: 'id', asc: true },
+  /* El comite lleva su propio orden y sus propios filtros: lo que el gerente
+     acomoda para el comite no debe descolocarle la tabla de trabajo.
+     `filtros` guarda solo las columnas filtradas; una columna ausente esta
+     sin filtrar. `menu` es la columna con el desplegable abierto. */
+  comite: { orden: { col: 'id', asc: true }, filtros: {}, menu: null },
   guardando: false,
   ultimoGuardado: null
 };
@@ -474,6 +479,13 @@ function anotarHistorial() {
    =========================================================================== */
 
 const NOMBRES_MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/* La cabecera muestra el dia en que se esta mirando el tablero, no el mes de
+   corte: el corte es siempre el mes en curso y decirlo no aportaba nada. Los
+   calculos siguen usando `config.mesCorte`; solo cambia lo que se lee. */
+const FECHA_LARGA = new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'long', year: 'numeric' });
+const fechaHoyLarga = () => FECHA_LARGA.format(new Date());
+
 const nombreMes = m => { const [a, s] = String(m).split('-'); return `${NOMBRES_MES[Number(s) - 1]}-${String(a).slice(2)}`; };
 const anioDe = m => Number(String(m).split('-')[0]);
 
@@ -569,8 +581,8 @@ function proyeccion(kpi, cfg) {
 }
 
 /* Los dos indicadores globales. El Excel solo tenía el segundo (12,8 %). */
-function indicadoresGlobales() {
-  const { kpis, config } = app.datos;
+function indicadoresGlobales(kpis = app.datos.kpis) {
+  const { config } = app.datos;
   const vsAnio = kpis.map(k => {
     const meta = metaAnio(k, config.mesCorte);
     return meta ? Math.max(0, Math.min(1.2, (k.avance ?? 0) / meta)) : null;
@@ -580,11 +592,41 @@ function indicadoresGlobales() {
   return { vsAnio: prom(vsAnio), vsFinal: prom(vsFinal) };
 }
 
-const conteoEstados = () => app.datos.kpis.reduce((acc, k) => {
+const conteoEstados = (kpis = app.datos.kpis) => kpis.reduce((acc, k) => {
   const e = estado(k, app.datos.config);
   acc[e] = (acc[e] || 0) + 1;
   return acc;
 }, {});
+
+/* Ordenar el estado por su texto no significa nada. Ascendente = lo peor
+   primero, que es como se lee un tablero de gerencia. */
+const ORDEN_ESTADO = { grave: 0, atencion: 1, sindato: 2, meta: 3 };
+
+/* Valor comparable de una columna, para ordenar en Tabla y en Comite. */
+function valorKpi(k, col, cfg) {
+  switch (col) {
+    case 'metaAnio': return metaAnio(k, cfg.mesCorte);
+    case 'progreso': return progresoFinal(k);
+    case 'estado':   return ORDEN_ESTADO[estado(k, cfg)];
+    case 'pilar':    return PILARES.find(p => p.id === k.pilar)?.nombre || k.pilar;
+    default:         return k[col];
+  }
+}
+
+const vacio = v => v === null || v === undefined || v === '';
+
+/* Los vacios van siempre al final, suba o baje el orden: una meta sin definir
+   no es «menor que cero», es una casilla que todavia no se ha llenado. */
+function ordenar(kpis, orden, cfg) {
+  return [...kpis].sort((a, b) => {
+    const va = valorKpi(a, orden.col, cfg), vb = valorKpi(b, orden.col, cfg);
+    if (vacio(va) || vacio(vb)) return vacio(va) && vacio(vb) ? 0 : (vacio(va) ? 1 : -1);
+    const n = Number.isFinite(va) && Number.isFinite(vb)
+      ? va - vb
+      : String(va).localeCompare(String(vb), 'es');
+    return orden.asc ? n : -n;
+  });
+}
 
 /* ===========================================================================
    §4  GRÁFICOS (SVG dibujado a mano, sin librerías)
@@ -731,7 +773,7 @@ function vistaCabecera() {
     <div class="barra">
       <div class="titulo">
         <h1>${esc(config.titulo || 'Tablero de Gerencia')}</h1>
-        <p class="corte">Mes de corte · <strong>${nombreMes(config.mesCorte)}</strong></p>
+        <p class="corte">${esc(fechaHoyLarga())}</p>
       </div>
       <div class="acciones">
         ${estadoGuardado}
@@ -817,18 +859,7 @@ function vistaTabla() {
     ['metaAnio', `Meta ${anioDe(config.mesCorte)}`], ['metaFinal', 'Meta final'],
     ['progreso', 'Progreso'], ['estado', 'Estado'], ['responsable', 'Responsable']
   ];
-  const valor = (k, c) =>
-      c === 'metaAnio'  ? metaAnio(k, config.mesCorte)
-    : c === 'progreso'  ? progresoFinal(k)
-    : c === 'estado'    ? estado(k, config)
-    : c === 'pilar'     ? (PILARES.find(p => p.id === k.pilar)?.nombre || k.pilar)
-    : k[c];
-
-  const filas = [...kpis].sort((a, b) => {
-    const va = valor(a, app.orden.col), vb = valor(b, app.orden.col);
-    const n = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'es');
-    return app.orden.asc ? n : -n;
-  }).map(k => {
+  const filas = ordenar(kpis, app.orden, config).map(k => {
     const est = estado(k, config);
     const esPct = k.unidad === 'porcentaje';
     const campo = (c, v) => `<span class="campo"><input class="celda-edit" type="number" step="any"
@@ -944,39 +975,168 @@ function vistaDetalle() {
     </div>`;
 }
 
+/* --- Comite: filtros y orden por columna, al modo de Excel ---------------- */
+
+/* Las mismas nueve columnas de la tabla de trabajo, en el mismo orden: el
+   comite es la version limpia de la misma lectura, no otra lectura. */
+const COLS_COMITE = [
+  { col: 'id',          etiqueta: 'ID' },
+  { col: 'pilar',       etiqueta: 'Pilar',       valores: true },
+  { col: 'nombre',      etiqueta: 'Indicador' },
+  { col: 'avance',      etiqueta: 'Avance',      num: true, der: true },
+  { col: 'metaAnio',    etiqueta: 'Meta',        num: true, der: true, conAnio: true },
+  { col: 'metaFinal',   etiqueta: 'Meta final',  num: true, der: true },
+  { col: 'progreso',    etiqueta: 'Progreso',    num: true },
+  { col: 'estado',      etiqueta: 'Estado',      valores: true,
+    ordenTxt: ['Los más críticos primero', 'Los que van en meta primero'] },
+  { col: 'responsable', etiqueta: 'Responsable', valores: true }
+];
+
+/* Clave con la que se filtra: el id del pilar y la clave del estado, no su
+   etiqueta, para que el filtro no dependa de como se escriba en pantalla. */
+const claveFiltro = (k, col, cfg) =>
+    col === 'estado' ? estado(k, cfg)
+  : col === 'pilar'  ? k.pilar
+  :                    String(k[col] ?? '');
+
+const etiquetaFiltro = (col, v) =>
+    col === 'estado' ? ETIQUETA_ESTADO[v]
+  : col === 'pilar'  ? (PILARES.find(p => p.id === v)?.nombre || v)
+  :                    (v || '(sin asignar)');
+
+/* Los valores de una columna salen siempre de TODOS los KPI, no de los que
+   quedan visibles: como en Excel, la lista de casillas no se encoge al
+   filtrar, porque entonces no habria forma de volver a marcar lo desmarcado. */
+function valoresFiltro(col, cfg) {
+  const canon = col === 'estado' ? Object.keys(ORDEN_ESTADO)
+              : col === 'pilar'  ? PILARES.map(p => p.id)
+              :                    RESPONSABLES;
+  const pos = v => { const i = canon.indexOf(v); return i < 0 ? canon.length : i; };
+  return [...new Set(app.datos.kpis.map(k => claveFiltro(k, col, cfg)))]
+    .sort((a, b) => pos(a) - pos(b) || String(a).localeCompare(String(b), 'es'));
+}
+
+/* Una columna ausente en `filtros` esta sin filtrar. Presente con lista vacia
+   significa que se desmarco todo: no pasa ninguna fila, y se avisa. */
+function filtrarComite(kpis, cfg) {
+  const f = app.comite.filtros;
+  const cols = Object.keys(f);
+  if (!cols.length) return kpis;
+  return kpis.filter(k => cols.every(col => f[col].includes(claveFiltro(k, col, cfg))));
+}
+
+function menuColumna(c, cfg) {
+  const [asc, desc] = c.ordenTxt || (c.num
+    ? ['De menor a mayor', 'De mayor a menor']
+    : ['De la A a la Z', 'De la Z a la A']);
+  const sel = app.comite.filtros[c.col];
+
+  const casillas = !c.valores ? '' : `
+    <hr class="menu-sep">
+    <div class="menu-vals">${valoresFiltro(c.col, cfg).map(v => `
+      <label class="menu-op"><input type="checkbox" data-cvalor="${esc(c.col + '|' + v)}"
+        ${!sel || sel.includes(v) ? 'checked' : ''}>${esc(etiquetaFiltro(c.col, v))}</label>`).join('')}
+    </div>
+    <div class="menu-pie">
+      <button class="menu-it" data-ctodos="${c.col}">Todos</button>
+      <button class="menu-it" data-cninguno="${c.col}">Ninguno</button>
+    </div>`;
+
+  return `<div class="menu-col">
+    <button class="menu-it" data-corden="${c.col}" data-casc="1">↑ ${esc(asc)}</button>
+    <button class="menu-it" data-corden="${c.col}" data-casc="0">↓ ${esc(desc)}</button>
+    ${casillas}
+  </div>`;
+}
+
+function encabezadoComite(c, cfg, anio) {
+  const ord = app.comite.orden;
+  const abierto = app.comite.menu === c.col;
+  const filtrada = Array.isArray(app.comite.filtros[c.col]);
+  const etiqueta = c.conAnio ? `${c.etiqueta} ${anio}` : c.etiqueta;
+  const flecha = ord.col === c.col ? (ord.asc ? ' ▴' : ' ▾') : '';
+  return `<th class="${c.der ? 'col-num' : ''}">
+    <div class="th-col">
+      <button class="orden ${ord.col === c.col ? 'activa' : ''}" data-corden="${c.col}"
+        title="Ordenar por ${esc(etiqueta)}">${esc(etiqueta)}${flecha}</button>
+      <button class="embudo ${filtrada ? 'activa' : ''}" data-cmenu="${c.col}"
+        aria-expanded="${abierto}" aria-label="Filtrar y ordenar por ${esc(etiqueta)}"
+        title="Filtrar y ordenar">${filtrada ? '▼' : '▾'}</button>
+    </div>
+    ${abierto ? menuColumna(c, cfg) : ''}
+  </th>`;
+}
+
+/* Resumen de lo que esta filtrado. Se queda en la impresion —sin la cruz—
+   porque quien lee el PDF necesita saber que no esta viendo los quince. */
+function barraFiltros() {
+  const f = app.comite.filtros;
+  const chips = Object.keys(f).map(col => {
+    const c = COLS_COMITE.find(x => x.col === col);
+    const sel = f[col];
+    const txt = !sel.length ? 'ninguno'
+      : sel.length > 2 ? `${sel.length} de ${valoresFiltro(col, app.datos.config).length}`
+      : sel.map(v => etiquetaFiltro(col, v)).join(', ');
+    return `<button class="chip-filtro" data-ctodos="${col}" title="Quitar el filtro de ${esc(c.etiqueta)}">
+      ${esc(c.etiqueta)}: <strong>${esc(txt)}</strong><i class="quitar" aria-hidden="true">✕</i></button>`;
+  }).join('');
+
+  if (!chips) return '';
+  /* Sin recuento aqui: el subtitulo ya dice «N de 15 indicadores». */
+  return `<div class="filtros-comite">
+    ${chips}
+    <button class="enlace no-imprimir" data-climpiar="">Quitar todos los filtros</button>
+  </div>`;
+}
+
 function vistaComite() {
   const { config, kpis } = app.datos;
-  const g = indicadoresGlobales();
-  const c = conteoEstados();
-  const filas = kpis.map(k => {
+  const anio = anioDe(config.mesCorte);
+  const visibles = ordenar(filtrarComite(kpis, config), app.comite.orden, config);
+  /* Las cifras de arriba siguen a los filtros: filtrar por una subgerencia y
+     que el titular siguiera hablando de los quince seria enganoso. */
+  const g = indicadoresGlobales(visibles);
+  const c = conteoEstados(visibles);
+
+  const filas = visibles.map(k => {
     const est = estado(k, config);
     return `<tr class="est-fila-${est}">
-      <td>${esc(k.id)}</td>
-      <td>${esc(k.nombre)}</td>
+      <td class="col-id">${esc(k.id)}</td>
+      <td class="col-pilar">${esc(PILARES.find(p => p.id === k.pilar)?.nombre || k.pilar)}</td>
+      <td class="col-nombre">${esc(k.nombre)}</td>
       <td class="col-num">${esc(fmtValor(k.avance, k.unidad))}</td>
       <td class="col-num">${esc(fmtValor(metaAnio(k, config.mesCorte), k.unidad))}</td>
-      <td class="col-bar">${barraBullet(k, config, 160, 12)}</td>
+      <td class="col-num">${esc(fmtValor(k.metaFinal, k.unidad))}</td>
+      <td class="col-bar"><span class="barra-pct">${barraBullet(k, config, 140, 12)}<b>${fmtPct(progresoFinal(k))}</b></span></td>
       <td>${pastilla(est)}</td>
+      <td class="col-resp">${esc(k.responsable)}</td>
     </tr>`;
   }).join('');
+
+  const filtrado = Object.keys(app.comite.filtros).length > 0;
 
   return `
     <div class="comite">
       <header class="comite-enc">
         <div>
           <h2>${esc(config.titulo)}</h2>
-          <p>Corte a ${nombreMes(config.mesCorte)} · ${kpis.length} indicadores</p>
+          <p>${esc(fechaHoyLarga())} · ${visibles.length}${filtrado ? ` de ${kpis.length}` : ''} indicadores</p>
         </div>
         <div class="comite-cifras">
-          <div><span>${fmtPct(g.vsAnio)}</span><small>hacia la meta ${anioDe(config.mesCorte)}</small></div>
+          <div><span>${fmtPct(g.vsAnio)}</span><small>hacia la meta ${anio}</small></div>
           <div><span>${fmtPct(g.vsFinal)}</span><small>hacia la meta final</small></div>
           <div><span>${c.meta || 0} · ${c.atencion || 0} · ${c.grave || 0}</span><small>en meta · atención · grave</small></div>
         </div>
       </header>
-      <table class="tabla tabla-comite">
-        <thead><tr><th>ID</th><th>Indicador</th><th class="col-num">Avance</th><th class="col-num">Meta ${anioDe(config.mesCorte)}</th><th>Progreso</th><th>Estado</th></tr></thead>
-        <tbody>${filas}</tbody>
-      </table>
+      ${barraFiltros()}
+      <div class="tabla-comite-env ${app.comite.menu ? 'con-menu' : ''}">
+        <table class="tabla tabla-comite">
+          <thead><tr>${COLS_COMITE.map(x => encabezadoComite(x, config, anio)).join('')}</tr></thead>
+          <tbody>${filas}</tbody>
+        </table>
+      </div>
+      ${visibles.length ? '' : `<p class="aviso vacio-comite">Ningún indicador cumple los filtros activos.
+        <button class="enlace" data-climpiar="">Quitar todos los filtros</button></p>`}
     </div>`;
 }
 
@@ -1099,15 +1259,49 @@ async function iniciar() {
 /* --- Eventos -------------------------------------------------------------- */
 
 document.addEventListener('click', (ev) => {
-  const t = ev.target.closest('[data-accion],[data-vista],[data-kpi],[data-filtro],[data-orden]');
+  const t = ev.target.closest('[data-accion],[data-vista],[data-kpi],[data-filtro],[data-orden],'
+    + '[data-corden],[data-cmenu],[data-ctodos],[data-cninguno],[data-climpiar]');
+  if (!app.datos) return;
+
+  /* Un desplegable de columna abierto se cierra al pulsar en cualquier otro
+     sitio. Se repinta ya: si el clic tenia destino, su rama vuelve a pintar,
+     y `t` sigue siendo utilizable porque solo se le leen los `data-`. */
+  if (app.comite.menu && !ev.target.closest('.menu-col,[data-cmenu]')) {
+    app.comite.menu = null;
+    pintar();
+  }
+
   // El body nunca es un destino: si lo fuera, cualquier clic suelto actuaria.
-  if (!t || t === document.body || !app.datos) return;
+  if (!t || t === document.body) return;
 
   if (t.dataset.accion === 'guardar')  return guardar();
   if (t.dataset.accion === 'recargar') return recargar();
   if (t.dataset.accion === 'hoja')     return window.open(`https://docs.google.com/spreadsheets/d/${app.sheetId}/edit`, '_blank');
 
-  if (t.dataset.vista)  { app.vista = t.dataset.vista; app.kpiSel = null; return pintar(); }
+  /* --- Filtros y orden del comite --- */
+  if (t.dataset.cmenu) {
+    app.comite.menu = app.comite.menu === t.dataset.cmenu ? null : t.dataset.cmenu;
+    return pintar();
+  }
+  if (t.dataset.corden) {
+    const col = t.dataset.corden;
+    // Desde el desplegable la direccion es explicita; desde el encabezado alterna.
+    app.comite.orden = {
+      col,
+      asc: t.dataset.casc !== undefined
+        ? t.dataset.casc === '1'
+        : (app.comite.orden.col === col ? !app.comite.orden.asc : true)
+    };
+    if (t.dataset.casc !== undefined) app.comite.menu = null;
+    return pintar();
+  }
+  if (t.dataset.ctodos)   { delete app.comite.filtros[t.dataset.ctodos]; return pintar(); }
+  if (t.dataset.cninguno) { app.comite.filtros[t.dataset.cninguno] = []; return pintar(); }
+  if (t.dataset.climpiar !== undefined) {
+    app.comite.filtros = {}; app.comite.menu = null; return pintar();
+  }
+
+  if (t.dataset.vista)  { app.vista = t.dataset.vista; app.kpiSel = null; app.comite.menu = null; return pintar(); }
   if (t.dataset.filtro !== undefined && !t.dataset.kpi) { app.filtroEstado = t.dataset.filtro || null; return pintar(); }
   if (t.dataset.orden)  {
     app.orden = { col: t.dataset.orden, asc: app.orden.col === t.dataset.orden ? !app.orden.asc : true };
@@ -1120,6 +1314,8 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); guardar(); }
+  // Escape cierra el desplegable de columna, como cualquier menu.
+  if (ev.key === 'Escape' && app.comite.menu) { app.comite.menu = null; pintar(); }
   if (ev.key === 'Enter' && ev.target.matches('.kpi[data-kpi]')) {
     app.kpiSel = ev.target.dataset.kpi; app.vista = 'detalle'; pintar();
   }
@@ -1147,6 +1343,20 @@ document.addEventListener('change', (ev) => {
     kpi[campo] = v;
     refrescarFila(kpi);
     return registrar(`${kpi.id} · ${campo}`, true);
+  }
+
+  /* Casillas del desplegable: se guarda la lista de lo marcado, y si queda
+     marcado todo se borra el filtro en vez de guardar los nueve valores. */
+  if (el.matches('[data-cvalor]')) {
+    const corte = el.dataset.cvalor.indexOf('|');
+    const col = el.dataset.cvalor.slice(0, corte);
+    const valor = el.dataset.cvalor.slice(corte + 1);
+    const todos = valoresFiltro(col, app.datos.config);
+    const sel = new Set(app.comite.filtros[col] ?? todos);
+    if (el.checked) sel.add(valor); else sel.delete(valor);
+    if (sel.size === todos.length) delete app.comite.filtros[col];
+    else app.comite.filtros[col] = todos.filter(v => sel.has(v));
+    return pintar();
   }
 
   if (el.matches('[data-hito]')) {

@@ -371,22 +371,107 @@ select.celda-edit { text-align: left; min-width: 150px; }
 .comite-cifras { display: flex; gap: 28px; }
 .comite-cifras span { display: block; font-size: 30px; font-weight: 600; line-height: 1.1; }
 .comite-cifras small { color: var(--tinta-2); font-size: 12px; }
-.tabla-comite { min-width: 0; font-size: 15px; }
+/* Nueve columnas no siempre caben en pantalla. El comite se desplaza en
+   horizontal sin ganar un marco propio: en papel cabe, y ahi es donde vive. */
+.tabla-comite-env { overflow-x: auto; }
+.tabla-comite { min-width: 940px; font-size: 15px; }
 .tabla-comite td { padding: 11px 12px; }
-.col-bar { width: 176px; }
+.tabla-comite .col-nombre { min-width: 200px; }
+.tabla-comite .col-resp { color: var(--tinta-2); font-size: 13px; }
+.col-bar { width: 200px; }
+/* La barra sin cifra obliga a estimar a ojo; la cifra sin barra no deja
+   comparar quince filas de un vistazo. Van juntas. */
+.barra-pct { display: flex; align-items: center; gap: 9px; }
+.barra-pct b { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; min-width: 40px; text-align: right; }
+/* --- Filtros y orden por columna del comite (al modo de Excel) ------------ */
+.filtros-comite {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px; font-size: 13px;
+}
+.chip-filtro {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font: inherit; color: var(--tinta-1); background: var(--plano);
+  border: 1px solid var(--eje); border-radius: 999px; padding: 3px 10px;
+}
+.chip-filtro .quitar { font-style: normal; color: var(--tinta-3); }
+.chip-filtro:hover .quitar { color: var(--est-grave); }
+
+.tabla-comite th { position: relative; }
+.th-col { display: flex; align-items: center; gap: 4px; }
+.tabla-comite th.col-num .th-col { justify-content: flex-end; }
+.embudo {
+  flex: 0 0 auto; background: none; border: 0; padding: 1px 3px; cursor: pointer;
+  color: var(--tinta-3); font-size: 10px; line-height: 1; border-radius: 3px;
+}
+.embudo:hover { color: var(--tinta-1); background: var(--rejilla); }
+.embudo.activa { color: var(--marca); }
+
+/* El desplegable se ancla al `th`. El contenedor de la tabla desplaza en
+   horizontal, y `overflow-x: auto` recorta tambien en vertical, asi que
+   mientras hay un menu abierto el contenedor deja de recortar. */
+.tabla-comite-env.con-menu { overflow: visible; }
+.menu-col {
+  position: absolute; z-index: 20; top: 100%; left: 0; min-width: 216px;
+  margin-top: 4px; padding: 6px;
+  background: var(--superficie); border: 1px solid var(--eje);
+  border-radius: var(--r); box-shadow: 0 4px 16px rgba(11, 11, 11, .18);
+  text-align: left; font-weight: 400; font-size: 13px; color: var(--tinta-1);
+}
+/* Las dos ultimas columnas abren hacia dentro: hacia fuera se saldrian. */
+.tabla-comite th:last-child .menu-col,
+.tabla-comite th:nth-last-child(2) .menu-col { left: auto; right: 0; }
+.menu-it {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; background: none; border: 0;
+  padding: 6px 8px; border-radius: 5px;
+}
+.menu-it:hover { background: var(--plano); }
+.menu-sep { border: 0; border-top: 1px solid var(--rejilla); margin: 5px 2px; }
+.menu-vals { max-height: 216px; overflow-y: auto; }
+.menu-op {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 5px 8px; border-radius: 5px;
+}
+.menu-op:hover { background: var(--plano); }
+.menu-op input { width: 15px; height: 15px; accent-color: var(--marca); flex: 0 0 auto; }
+.menu-pie { display: flex; gap: 4px; border-top: 1px solid var(--rejilla); margin-top: 5px; padding-top: 4px; }
+.menu-pie .menu-it { width: auto; color: var(--marca); font-size: 12px; padding: 4px 8px; }
+.vacio-comite { margin-top: 18px; }
+
 body[data-pantalla="comite"] { background: var(--superficie); }
 body[data-pantalla="comite"] #contenido { padding-top: 32px; }
 
 /* --- Impresión: el comité en una página ----------------------------------- */
 @media print {
   :root { --sombra: none; }
-  #cabecera, .acciones, .pestanas, .volver { display: none !important; }
+  /* Los mandos del filtro no se imprimen; el resumen de lo filtrado si, para
+     que quien lea el PDF sepa que no esta viendo los quince indicadores. */
+  #cabecera, .acciones, .pestanas, .volver,
+  .embudo, .menu-col, .no-imprimir, .chip-filtro .quitar { display: none !important; }
+  .chip-filtro { border: 0; background: none; padding: 0 10px 0 0; font-size: 10px; }
+  .filtros-comite { gap: 4px; margin-bottom: 8px; font-size: 10px; }
   body, #contenido { background: #fff; }
   #contenido { max-width: none; padding: 0; }
-  .tabla-comite { font-size: 11px; }
-  .tabla-comite td, .tabla-comite th { padding: 5px 7px; }
+  .tabla-comite-env { overflow: visible; }
+  .tabla-comite { min-width: 0; font-size: 11px; }
+  .tabla-comite .col-pilar, .tabla-comite .col-resp { font-size: 10px; }
+  .col-bar { width: 128px; }
+  .tabla-comite .g-bullet { width: 90px; }
+  .barra-pct { gap: 6px; }
+  .barra-pct b { font-size: 10px; min-width: 30px; }
   .comite-enc h2 { font-size: 19px; }
   .comite-cifras span { font-size: 21px; }
-  .pastilla { border-color: #999; }
+  .comite-enc { margin-bottom: 12px; }
+
+  /* Las nueve columnas caben de sobra en el ancho apaisado; lo escaso es el
+     alto. El area imprimible mas corta es A4 apaisado —unos 700 px con 12 mm
+     de margen— y hay que meter ahi la cabecera y las quince filas.
+     Cada pixel que se le quite a una fila se multiplica por quince. */
+  .tabla-comite td, .tabla-comite th { padding: 3px 6px; }
+  .pastilla { border-color: #999; font-size: 10px; gap: 4px; padding: 2px 7px 2px 5px; }
+  .pastilla i { width: 13px; height: 13px; font-size: 9px; }
+  /* Mas especifico que la regla de #contenido de aqui abajo, que si no pierde
+     por especificidad y deja los 32 px que descuadran la pagina. */
+  body[data-pantalla="comite"] #contenido { padding-top: 0; }
   @page { size: landscape; margin: 12mm; }
 }
